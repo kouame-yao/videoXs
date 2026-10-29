@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   CircleUserRound,
+  Download,
   Globe2,
   Heart,
   Menu,
@@ -60,6 +61,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [localVideoUrl, setLocalVideoUrl] = useState('');
+  const [posterDownloadError, setPosterDownloadError] = useState('');
 
   useEffect(() => {
     const storedSettings = localStorage.getItem(storageKey);
@@ -114,6 +116,24 @@ function App() {
     setIsSaving(false);
   };
 
+  const downloadPoster = async () => {
+    setPosterDownloadError('');
+    try {
+      const response = await fetch(settings.poster_url || defaultSettings.poster_url);
+      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = 'apercu-video';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setPosterDownloadError('Téléchargement impossible. Vérifiez que l’image est accessible.');
+    }
+  };
+
   const videoSource = localVideoUrl || settings.video_url;
 
   return (
@@ -145,7 +165,7 @@ function App() {
         <section className="video-card">
           <div className="video-frame">
             {videoError ? <div className="video-error"><strong>Cette vidéo ne peut pas être lue ici</strong><span>Le navigateur ne reconnaît pas ce format ou ce codec.</span></div> : videoSource && isPlaying ? (
-              <video className="video-player" src={videoSource} controls autoPlay onEnded={() => setIsPlaying(false)} onError={() => setVideoError(true)} />
+              <video className="video-player" src={videoSource} controls autoPlay playsInline onEnded={() => setIsPlaying(false)} onError={() => setVideoError(true)} />
             ) : (
               <>
                 <img src={settings.poster_url || defaultSettings.poster_url} alt="Aperçu de la vidéo" />
@@ -154,6 +174,10 @@ function App() {
                 <div className="video-time"><span>00:00</span><div className="progress-line"><i /></div><span>16:12</span></div>
               </>
             )}
+            <div className="poster-download">
+              <button type="button" onClick={downloadPoster}><Download size={17} /> Télécharger l’aperçu</button>
+              {posterDownloadError && <span role="status">{posterDownloadError}</span>}
+            </div>
           </div>
           <div className="title-line"><h1>{settings.title}</h1><button className="globe-button" aria-label="Langue"><Globe2 size={29} /></button></div>
           <div className="meta-line"><span>{settings.views_label}</span><b>•</b><span>{settings.published_label}</span><b>|</b><span className="verified"><Check size={15} strokeWidth={4} /> ID Verified</span></div>
