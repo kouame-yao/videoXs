@@ -4,7 +4,6 @@ import {
   Check,
   ChevronDown,
   CircleUserRound,
-  Download,
   Globe2,
   Heart,
   Menu,
@@ -61,7 +60,6 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [localVideoUrl, setLocalVideoUrl] = useState('');
-  const [posterDownloadError, setPosterDownloadError] = useState('');
 
   useEffect(() => {
     const storedSettings = localStorage.getItem(storageKey);
@@ -99,6 +97,23 @@ function App() {
     reader.readAsDataURL(file);
   };
 
+  const handlePosterImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setSaveMessage('Veuillez choisir un fichier image.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateDraft('poster_url', String(reader.result));
+      setSaveMessage('');
+    };
+    reader.onerror = () => setSaveMessage('Impossible de lire cette image. Veuillez réessayer.');
+    reader.readAsDataURL(file);
+  };
+
   const saveSettings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -114,24 +129,6 @@ function App() {
       setSaveMessage('Le fichier est trop volumineux pour le stockage local. Gardez cette page ouverte ou utilisez une adresse vidéo.');
     }
     setIsSaving(false);
-  };
-
-  const downloadPoster = async () => {
-    setPosterDownloadError('');
-    try {
-      const response = await fetch(settings.poster_url || defaultSettings.poster_url);
-      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
-      const objectUrl = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = 'apercu-video';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch {
-      setPosterDownloadError('Téléchargement impossible. Vérifiez que l’image est accessible.');
-    }
   };
 
   const videoSource = localVideoUrl || settings.video_url;
@@ -174,10 +171,6 @@ function App() {
                 <div className="video-time"><span>00:00</span><div className="progress-line"><i /></div><span>16:12</span></div>
               </>
             )}
-            <div className="poster-download">
-              <button type="button" onClick={downloadPoster}><Download size={17} /> Télécharger l’aperçu</button>
-              {posterDownloadError && <span role="status">{posterDownloadError}</span>}
-            </div>
           </div>
           <div className="title-line"><h1>{settings.title}</h1><button className="globe-button" aria-label="Langue"><Globe2 size={29} /></button></div>
           <div className="meta-line"><span>{settings.views_label}</span><b>•</b><span>{settings.published_label}</span><b>|</b><span className="verified"><Check size={15} strokeWidth={4} /> ID Verified</span></div>
@@ -205,7 +198,9 @@ function App() {
           <div className="panel-header"><div><p className="eyebrow">ESPACE CRÉATEUR</p><h2>Modifier la vidéo</h2></div><button type="button" className="close-button" onClick={() => setIsSettingsOpen(false)}><X size={22} /></button></div>
           <label>Adresse de la vidéo<input value={draft.video_url} onChange={(event) => updateDraft('video_url', event.target.value)} placeholder="https://.../ma-video.mp4" /></label>
           <div className="file-field"><span>Ou choisir un fichier sur cet appareil</span><label className="file-button">Parcourir<input type="file" accept="video/*" onChange={handleVideoFile} /></label></div>
-          <label>Image d’aperçu<input value={draft.poster_url} onChange={(event) => updateDraft('poster_url', event.target.value)} placeholder="https://.../image.jpg" /></label>
+          <label>Adresse de l’image d’aperçu<input value={draft.poster_url} onChange={(event) => updateDraft('poster_url', event.target.value)} placeholder="https://.../image.jpg" /></label>
+          <div className="file-field poster-file-field"><span>Ou ajouter une image depuis votre appareil</span><label className="file-button">Choisir une image<input type="file" accept="image/*" onChange={handlePosterImage} /></label></div>
+          <img className="poster-preview" src={draft.poster_url || defaultSettings.poster_url} alt="Aperçu de l’image sélectionnée" />
           <label>Titre<input value={draft.title} onChange={(event) => updateDraft('title', event.target.value)} /></label>
           <div className="field-grid"><label>Vues<input value={draft.views_label} onChange={(event) => updateDraft('views_label', event.target.value)} /></label><label>J'aime<input value={draft.likes_label} onChange={(event) => updateDraft('likes_label', event.target.value)} /></label></div>
           <div className="field-grid"><label>Publié<input value={draft.published_label} onChange={(event) => updateDraft('published_label', event.target.value)} /></label><label>Nom de la chaîne<input value={draft.channel_name} onChange={(event) => updateDraft('channel_name', event.target.value)} /></label></div>

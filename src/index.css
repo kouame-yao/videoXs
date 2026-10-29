@@ -41,9 +41,8 @@ button { cursor: pointer; }
 .video-error { height: 100%; display: grid; place-content: center; gap: 10px; padding: 24px; text-align: center; color: #f3f3f3; background: radial-gradient(circle at center, #262626, #0e0e0e 65%); }
 .video-error strong { font-size: 20px; }
 .video-error span { color: #a9a9a9; font-size: 14px; }
-.poster-download { position: absolute; top: 12px; right: 12px; display: grid; justify-items: end; gap: 7px; }
-.poster-download button { display: flex; align-items: center; gap: 7px; border: 1px solid #555; border-radius: 6px; padding: 9px 12px; color: #fff; background: rgba(20,20,20,.88); font-size: 13px; }
-.poster-download span { max-width: min(280px, calc(100vw - 48px)); color: #ffd2d2; background: rgba(20,20,20,.9); padding: 7px 9px; border-radius: 5px; font-size: 12px; text-align: right; }
+.poster-file-field { margin-top: 0; }
+.poster-preview { display: block; width: 100%; max-height: 180px; margin: -4px 0 18px; border-radius: 7px; background: #080808; object-fit: contain; }
 .video-shade { position: absolute; inset: 0; background: linear-gradient(transparent 45%, rgba(0,0,0,.86)); }
 .play-button { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: transparent; color: white; border: 0; transition: transform .2s; }
 .play-button:hover { transform: translate(-50%, -50%) scale(1.12); }
