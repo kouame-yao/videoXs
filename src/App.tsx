@@ -40,8 +40,8 @@ const defaultSettings: ShowcaseSettings = {
   poster_url: 'https://images.pexels.com/photos/6800204/pexels-photo-6800204.jpeg?auto=compress&cs=tinysrgb&h=650&w=940',
   title: "Réaliser Le Fantasme De Ma Femme D’amour",
   views_label: '1.6M Vues',
-  published_label: 'il y a 5 mois',
-  likes_label: '5K',
+  published_label: 'À l’instant',
+  likes_label: '0',
   channel_name: 'Lusthub',
   channel_subscribers: '10K Abonnés',
   channel_videos: '32 Vidéos',
@@ -55,9 +55,25 @@ const settingsStoreName = 'settings';
 
 function openSettingsDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore(settingsStoreName);
+    const request = indexedDB.open(databaseName, 2);
+    request.onupgradeneeded = (event) => {
+      const database = request.result;
+      const transaction = request.transaction;
+      if (!database.objectStoreNames.contains(settingsStoreName)) {
+        database.createObjectStore(settingsStoreName);
+      }
+      if (event.oldVersion < 2 && event.oldVersion > 0 && transaction) {
+        const store = transaction.objectStore(settingsStoreName);
+        const savedSettingsRequest = store.get('current') as IDBRequest<ShowcaseSettings | undefined>;
+        savedSettingsRequest.onsuccess = () => {
+          if (!savedSettingsRequest.result) return;
+          store.put({
+            ...savedSettingsRequest.result,
+            published_label: defaultSettings.published_label,
+            likes_label: defaultSettings.likes_label,
+          }, 'current');
+        };
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Impossible d’ouvrir la base de données.'));
@@ -108,7 +124,12 @@ async function loadStoredSettings(): Promise<ShowcaseSettings | null> {
 
   let migratedSettings: ShowcaseSettings;
   try {
-    migratedSettings = { ...defaultSettings, ...JSON.parse(legacySettings) } as ShowcaseSettings;
+    migratedSettings = {
+      ...defaultSettings,
+      ...JSON.parse(legacySettings),
+      published_label: defaultSettings.published_label,
+      likes_label: defaultSettings.likes_label,
+    } as ShowcaseSettings;
   } catch {
     localStorage.removeItem(storageKey);
     return null;
@@ -133,8 +154,8 @@ function App() {
   useEffect(() => {
     loadStoredSettings().then((savedSettings) => {
       if (savedSettings) {
-      setSettings(savedSettings);
-      setDraft(savedSettings);
+        setSettings(savedSettings);
+        setDraft(savedSettings);
       }
     }).catch((error: unknown) => {
       setSaveMessage(error instanceof Error ? `Impossible de charger les paramètres : ${error.message}` : 'Impossible de charger les paramètres enregistrés.');
