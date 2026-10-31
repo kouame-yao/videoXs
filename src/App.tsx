@@ -50,6 +50,74 @@ const defaultSettings: ShowcaseSettings = {
 };
 
 const storageKey = 'video-showcase-settings';
+const databaseName = 'video-showcase';
+const settingsStoreName = 'settings';
+
+function openSettingsDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(databaseName, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(settingsStoreName);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Impossible d’ouvrir la base de données.'));
+    request.onblocked = () => reject(new Error('La base de données est bloquée par un autre onglet.'));
+  });
+}
+
+async function readSettingsFromDatabase(): Promise<ShowcaseSettings | undefined> {
+  const database = await openSettingsDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(settingsStoreName, 'readonly');
+      const request = transaction.objectStore(settingsStoreName).get('current') as IDBRequest<ShowcaseSettings | undefined>;
+      let settings: ShowcaseSettings | undefined;
+      request.onsuccess = () => {
+        settings = request.result;
+      };
+      transaction.oncomplete = () => resolve(settings);
+      transaction.onerror = () => reject(transaction.error ?? new Error('Impossible de lire les paramètres.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('La lecture des paramètres a été interrompue.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function writeSettingsToDatabase(settings: ShowcaseSettings): Promise<void> {
+  const database = await openSettingsDatabase();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(settingsStoreName, 'readwrite');
+      transaction.objectStore(settingsStoreName).put(settings, 'current');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Impossible d’enregistrer les paramètres.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('L’enregistrement des paramètres a été interrompu.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+async function loadStoredSettings(): Promise<ShowcaseSettings | null> {
+  const savedSettings = await readSettingsFromDatabase();
+  if (savedSettings) return { ...defaultSettings, ...savedSettings };
+
+  const legacySettings = localStorage.getItem(storageKey);
+  if (!legacySettings) return null;
+
+  let migratedSettings: ShowcaseSettings;
+  try {
+    migratedSettings = { ...defaultSettings, ...JSON.parse(legacySettings) } as ShowcaseSettings;
+  } catch {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+
+  await writeSettingsToDatabase(migratedSettings);
+  localStorage.removeItem(storageKey);
+  return migratedSettings;
+}
 
 function App() {
   const [settings, setSettings] = useState<ShowcaseSettings>(defaultSettings);
@@ -60,44 +128,63 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [localVideoUrl, setLocalVideoUrl] = useState('');
+  const [isReadingFile, setIsReadingFile] = useState(false);
 
   useEffect(() => {
-    const storedSettings = localStorage.getItem(storageKey);
-    if (!storedSettings) return;
-    try {
-      const savedSettings = { ...defaultSettings, ...JSON.parse(storedSettings) } as ShowcaseSettings;
+    loadStoredSettings().then((savedSettings) => {
+      if (savedSettings) {
       setSettings(savedSettings);
       setDraft(savedSettings);
-    } catch {
-      localStorage.removeItem(storageKey);
-    }
+      }
+    }).catch((error: unknown) => {
+      setSaveMessage(error instanceof Error ? `Impossible de charger les paramètres : ${error.message}` : 'Impossible de charger les paramètres enregistrés.');
+    });
   }, []);
 
   const updateDraft = (field: keyof ShowcaseSettings, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
   };
 
-  const handleVideoFile = (event: ChangeEvent<HTMLInputElement>) => {
+  const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Impossible de lire ce fichier.'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleVideoFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const objectUrl = URL.createObjectURL(file);
     setLocalVideoUrl(objectUrl);
     setVideoError(false);
     setIsPlaying(false);
-    const reader = new FileReader();
-    reader.onload = () => updateDraft('video_url', String(reader.result));
-    reader.readAsDataURL(file);
+    setIsReadingFile(true);
+    try {
+      updateDraft('video_url', await readFileAsDataUrl(file));
+      setSaveMessage('');
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Impossible de lire cette vidéo.');
+    } finally {
+      setIsReadingFile(false);
+    }
   };
 
-  const handleProfileImage = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleProfileImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => updateDraft('profile_image', String(reader.result));
-    reader.readAsDataURL(file);
+    setIsReadingFile(true);
+    try {
+      updateDraft('profile_image', await readFileAsDataUrl(file));
+      setSaveMessage('');
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : 'Impossible de lire cette photo.');
+    } finally {
+      setIsReadingFile(false);
+    }
   };
 
-  const handlePosterImage = (event: ChangeEvent<HTMLInputElement>) => {
+  const handlePosterImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -105,30 +192,39 @@ function App() {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateDraft('poster_url', String(reader.result));
+    setIsReadingFile(true);
+    try {
+      updateDraft('poster_url', await readFileAsDataUrl(file));
       setSaveMessage('');
-    };
-    reader.onerror = () => setSaveMessage('Impossible de lire cette image. Veuillez réessayer.');
-    reader.readAsDataURL(file);
+    } catch {
+      setSaveMessage('Impossible de lire cette image. Veuillez réessayer.');
+    } finally {
+      setIsReadingFile(false);
+    }
   };
 
-  const saveSettings = (event: FormEvent<HTMLFormElement>) => {
+  const saveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
     setSaveMessage('');
+
     const nextSettings = { ...draft, video_url: draft.video_url.trim() };
     try {
-      localStorage.setItem(storageKey, JSON.stringify(nextSettings));
+      await writeSettingsToDatabase(nextSettings);
       setSettings(nextSettings);
       setDraft(nextSettings);
       setVideoError(false);
-      setSaveMessage('Paramètres enregistrés sur cet appareil');
-    } catch {
-      setSaveMessage('Le fichier est trop volumineux pour le stockage local. Gardez cette page ouverte ou utilisez une adresse vidéo.');
+      try {
+        localStorage.removeItem(storageKey);
+        setSaveMessage('Paramètres enregistrés sur cet appareil');
+      } catch {
+        setSaveMessage('Paramètres enregistrés. Une ancienne copie locale n’a pas pu être supprimée.');
+      }
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? `Échec de l’enregistrement : ${error.message}` : 'Échec de l’enregistrement des paramètres.');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const videoSource = localVideoUrl || settings.video_url;
@@ -185,7 +281,7 @@ function App() {
 
         <section className="channel-row">
           <div className="channel-avatar">{settings.profile_image ? <img src={settings.profile_image} alt="Photo de profil" /> : <><span>{settings.username.slice(0, 1).toUpperCase()}</span></>}</div>
-          <div><h2>{settings.username} <span className="channel-badge">▻</span></h2><p>{settings.channel_subscribers} <b>•</b> {settings.channel_videos}</p></div>
+          <div><h2>{settings.channel_name} <span className="channel-badge">▻</span></h2><p>{settings.channel_subscribers} <b>•</b> {settings.channel_videos}</p></div>
           <button className="follow-button">S’abonner <ChevronDown size={17} /></button>
           <button className="more-button" aria-label="Plus d'options"><MoreHorizontal size={27} /></button>
         </section>
@@ -207,7 +303,7 @@ function App() {
           <label>Pseudo affiché<input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} /></label>
           <div className="file-field"><span>Photo de profil</span><label className="file-button">Choisir une photo<input type="file" accept="image/*" onChange={handleProfileImage} /></label></div>
           {saveMessage && <p className="save-message">{saveMessage}</p>}
-          <button className="save-button" type="submit" disabled={isSaving}>{isSaving ? 'Enregistrement…' : 'Enregistrer les changements'}</button>
+          <button className="save-button" type="submit" disabled={isSaving || isReadingFile}>{isReadingFile ? 'Lecture du fichier…' : isSaving ? 'Enregistrement…' : 'Enregistrer les changements'}</button>
         </form>
       </div>}
     </main>
