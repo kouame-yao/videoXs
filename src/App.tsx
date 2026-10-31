@@ -260,6 +260,30 @@ function App() {
     }
   };
 
+  const resetSettings = async () => {
+    setIsSaving(true);
+    setSaveMessage('');
+    try {
+      await writeSettingsToDatabase(defaultSettings);
+      setSettings(defaultSettings);
+      setDraft(defaultSettings);
+      setIsPlaying(false);
+      setVideoError(false);
+      if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
+      setLocalVideoUrl('');
+      try {
+        localStorage.removeItem(storageKey);
+        setSaveMessage('Modifications réinitialisées');
+      } catch {
+        setSaveMessage('Modifications réinitialisées, mais une ancienne copie locale n’a pas pu être supprimée.');
+      }
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? `Échec de la réinitialisation : ${error.message}` : 'Échec de la réinitialisation des paramètres.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const videoSource = localVideoUrl || settings.video_url;
 
   return (
@@ -336,7 +360,10 @@ function App() {
           <label>Pseudo affiché<input value={draft.username} onChange={(event) => updateDraft('username', event.target.value)} /></label>
           <div className="file-field"><span>Photo de profil</span><label className="file-button">Choisir une photo<input type="file" accept="image/*" onChange={handleProfileImage} /></label></div>
           {saveMessage && <p className="save-message">{saveMessage}</p>}
-          <button className="save-button" type="submit" disabled={isSaving || isReadingFile}>{isReadingFile ? 'Lecture du fichier…' : isSaving ? 'Enregistrement…' : 'Enregistrer les changements'}</button>
+          <div className="settings-actions">
+            <button className="reset-button" type="button" onClick={resetSettings} disabled={isSaving || isReadingFile}>{isSaving ? 'Réinitialisation…' : 'Réinitialiser'}</button>
+            <button className="save-button" type="submit" disabled={isSaving || isReadingFile}>{isReadingFile ? 'Lecture du fichier…' : isSaving ? 'Enregistrement…' : 'Enregistrer les changements'}</button>
+          </div>
         </form>
       </div>}
     </main>
