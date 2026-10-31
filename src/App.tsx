@@ -39,7 +39,7 @@ const defaultSettings: ShowcaseSettings = {
   video_url: '',
   poster_url: 'https://images.pexels.com/photos/6800204/pexels-photo-6800204.jpeg?auto=compress&cs=tinysrgb&h=650&w=940',
   title: "Réaliser Le Fantasme De Ma Femme D’amour",
-  views_label: '1.6M Vues',
+  views_label: '0 Vues',
   published_label: 'À l’instant',
   likes_label: '0',
   channel_name: 'Lusthub',
@@ -55,7 +55,7 @@ const settingsStoreName = 'settings';
 
 function openSettingsDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 2);
+    const request = indexedDB.open(databaseName, 3);
     request.onupgradeneeded = (event) => {
       const database = request.result;
       const transaction = request.transaction;
@@ -71,6 +71,17 @@ function openSettingsDatabase(): Promise<IDBDatabase> {
             ...savedSettingsRequest.result,
             published_label: defaultSettings.published_label,
             likes_label: defaultSettings.likes_label,
+          }, 'current');
+        };
+      }
+      if (event.oldVersion < 3 && event.oldVersion > 0 && transaction) {
+        const store = transaction.objectStore(settingsStoreName);
+        const savedSettingsRequest = store.get('current') as IDBRequest<ShowcaseSettings | undefined>;
+        savedSettingsRequest.onsuccess = () => {
+          if (!savedSettingsRequest.result) return;
+          store.put({
+            ...savedSettingsRequest.result,
+            views_label: defaultSettings.views_label,
           }, 'current');
         };
       }
@@ -127,6 +138,7 @@ async function loadStoredSettings(): Promise<ShowcaseSettings | null> {
     migratedSettings = {
       ...defaultSettings,
       ...JSON.parse(legacySettings),
+      views_label: defaultSettings.views_label,
       published_label: defaultSettings.published_label,
       likes_label: defaultSettings.likes_label,
     } as ShowcaseSettings;
